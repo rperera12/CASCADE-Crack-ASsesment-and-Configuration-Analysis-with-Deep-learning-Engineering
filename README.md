@@ -6,7 +6,7 @@ CASCADE is a project that leverages the power of Deep Learning, particularly Con
 
 ## Last Modification
 
-This script was last modified on: August 1, 2023
+This script was last modified on: August 8, 2023
 
 ## Installation
 

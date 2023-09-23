@@ -1,0 +1,95 @@
+# We want to predict the values of the potential energy that are given by the dataloader dataset
+import numpy as np
+import torch
+import torchvision
+import os
+import scipy.io
+import matplotlib.pyplot as plt
+from torchvision import datasets, transforms
+from torch import nn, optim
+
+from DataLoader.DataLoader_1 import CustomCollate, DataLoader_X
+
+# First we need to load our traning and testing datasets (which in our case are the same)
+
+# Get the root directory for the dataset
+root_dir = os.getcwd() + '/train_dir/'
+
+    # Create a DataLoader instance using the root directory
+trainset = DataLoader_X(root_dir)
+
+    # Create our trainloader using the DataLoader instance and CustomCollate function
+trainloader = torch.utils.data.DataLoader(trainset, collate_fn=CustomCollate())
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Using device:", device)
+
+# Now we can create our neural network/model
+class FeedforwardNeuralNetModel(nn.Module):
+    def __init__(self, input_dimension, hidden_dimension, output_dimension):
+        super(FeedforwardNeuralNetModel, self).__init__()
+         # Linear function 1: input layer to hidden layer
+        self.fc1 = nn.Linear(input_dimension, hidden_dimension)
+         # Non-linearity
+        self.relu = nn.ReLU()
+        # Linear function 2 : hidden layer to our output layer
+        self.fc2 = nn.Linear(hidden_dimension, output_dimension)  
+
+    def forward(self, x):
+        # Output of our first linear layer
+        out = self.fc1(x)
+        # Output of our non-linearity layer
+        out = self.relu(out)
+        # Out put of our second Linear function (readout)
+        out = self.fc2(out)
+        return out # returns our model
+
+input_dimension = 101 # we have 101 time stamps
+hidden_dimension = 64 # this can be whatever we want, but should keep it divisible by 2, so it typically is either 32, 64, 128, 256, etc. 
+output_dimension = 20 # 5 cracks, each one with 4
+
+model = FeedforwardNeuralNetModel(input_dimension, hidden_dimension, output_dimension)
+
+# We need to create our loss function
+criterion = nn.MSELoss()
+
+# Our core training process:
+learning_rate = 0.01
+
+optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+batch_size = 32 # because a batch_size of 64 is typically too high for a computer and can possibly cause it to crash
+num_epochs = 10
+iter = 0
+
+for epoch in range(num_epochs):
+    for i, (input, labels, sim_name) in enumerate(trainloader):
+        input = (input.float()).to(device)
+        labels = (labels).to(device)
+
+        # forward 
+        prediction = model(input)
+        loss = criterion(prediction, labels)
+        error = (abs(prediction-labels)/labels)
+        real_error = torch.mean(error) * 100
+        accuracy = abs(100-real_error)
+
+        #backward
+        optimizer.zero_grad() # zero the parameter gradients
+        loss.backward()
+        optimizer.step()
+        
+
+        iter += 1
+
+        if iter % 10 == 0:
+            # Print the iterations, loss and accuracy         
+            print('Iterations: {}. Loss: {}. Error: {}. Accuracy: {}%'.format(iter, loss.item(), real_error, accuracy))
+            print('Labels: {}'.format(labels))
+            print('Prediction: {}'.format(prediction))
+
+
+# Saving the Model
+path = ".\Feedforward_Neural_Network.pt"
+torch.save(model, path) # this saves our model for when we may need to use it again
+

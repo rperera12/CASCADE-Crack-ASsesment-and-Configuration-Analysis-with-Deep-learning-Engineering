@@ -1,0 +1,55 @@
+# Plotting the differences in potential energy
+
+# *THIS USES CODE FROM 2500_2000 FOLDER*
+
+import numpy as np 
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+import scipy.io
+import scipy.spatial as spatial
+import os
+from sklearn.metrics import mean_absolute_error as mae
+
+job_dir = os.getcwd() # this function represents getting the current (starting) directory/path we have
+results_dir = '/JOBS_RESULTS/random_cracks/random_cracks/pressurised_cracks' # This represents the path we want to have
+
+work_dir = job_dir + results_dir #this combines our current path with the one we want to have in order to be in the path that has our desired file
+sim_no = 2805 #this represents the number for the simulation we will be using- aka simulation 8000 (comes from var_iter_8000, or if it was one of my own simulations: var_iter_0001, where sim_num = 0001)
+
+job_id = '/var_iter_' + str(sim_no) # this takes the simulation number we have and creates the name of the folder that has the data we want to use
+state_conf = scipy.io.loadmat(job_dir + results_dir + job_id + '/var_State.mat') # (Opens var_State.mat file) we use the scipy.io.loadmat function in order to open a matlab file. Thus, since the data is in a matlab file this goes to the path we defined, opens the folder with the name we assigned above, and then opens the intial crack matlab data in said folder.
+state_data = state_conf['sState'] # Goes to the 'sState' file within the var_State matlab file that was opened
+predicted_potential_energy = state_data['Pi'][0,0] # Goes to the potentail energy data within the 'sState file in var_State
+
+list_predicted = np.array(predicted_potential_energy)
+
+
+
+
+job_dir = os.getcwd() # this function represents getting the current (starting) directory/path we have
+results_dir = '/JOBS_RESULTS/random_cracks/random_cracks/pressurised_cracks' # This represents the path we want to have
+
+work_dir = job_dir + results_dir #this combines our current path with the one we want to have in order to be in the path that has our desired file
+sim_no = 33 #this represents the number for the simulation we will be using- aka simulation 8000 (comes from var_iter_8000, or if it was one of my own simulations: var_iter_0001, where sim_num = 0001)
+
+job_id = '/var_iter_' + str(sim_no) # this takes the simulation number we have and creates the name of the folder that has the data we want to use
+state_conf = scipy.io.loadmat(job_dir + results_dir + job_id + '/var_State.mat') # (Opens var_State.mat file) we use the scipy.io.loadmat function in order to open a matlab file. Thus, since the data is in a matlab file this goes to the path we defined, opens the folder with the name we assigned above, and then opens the intial crack matlab data in said folder.
+state_data = state_conf['sState'] # Goes to the 'sState' file within the var_State matlab file that was opened
+potential_energy = state_data['Pi'][0,0] # Goes to the potentail energy data within the 'sState file in var_State
+right_potential_energy = potential_energy[:81] # change this based on the data (for this simulation, our predicated cracks only had 81 time steps, thus this allows us to only use the first 81 time steps of our actual crack positions to compare to the 81 time setps of our predicted cracks)
+
+error = (abs(predicted_potential_energy-right_potential_energy)/right_potential_energy)*100
+average_error = np.mean(error)
+actual_error = np.round(average_error, decimals=3)
+
+
+plt.plot(predicted_potential_energy, label = "Predicted Potential Energy", color = 'black')
+plt.plot(right_potential_energy, label = "Actual Potential Energy", color = 'green')
+plt.title(f'Predicted Potential Engery vs Actual Potential Energy for var_iter_{sim_no}')
+plt.ylabel('Potential Energy')
+plt.xlabel("Time")
+plt.text(61.5, 3.8, f'Percent Error= {actual_error}%', fontsize = 10)
+plt.legend(ncol=1, loc= 'best')
+plt.grid()
+plt.show()
+

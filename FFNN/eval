@@ -1,0 +1,113 @@
+# We want to predict the values of the potential energy that are given by the dataloader dataset
+import numpy as np
+import torch
+import torchvision
+import os
+import scipy.io
+import matplotlib.pyplot as plt
+from torchvision import datasets, transforms
+from torch import nn, optim
+from torch import tensor
+
+from DataLoader.DataLoader_1 import CustomCollate, DataLoader_X
+#from DataLoader.DataLoader_3 import CustomImageDataset
+
+# First we need to load our traning and testing datasets (which in our case are the same)
+
+# Get the root directory for the dataset
+root_dir = os.getcwd() + '/train_dir/'
+
+    # Create a DataLoader instance using the root directory
+trainset = DataLoader_X(root_dir)
+
+    # Create our trainloader using the DataLoader instance and CustomCollate function
+trainloader = torch.utils.data.DataLoader(trainset, collate_fn=CustomCollate())
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Using device:", device)
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Using device:", device)
+
+# Now we can create our neural network/model
+class FeedforwardNeuralNetModel(nn.Module):
+    def __init__(self, input_dimension, hidden_dimension, output_dimension):
+        super(FeedforwardNeuralNetModel, self).__init__()
+         # Linear function 1: input layer to hidden layer
+        self.fc1 = nn.Linear(input_dimension, hidden_dimension)
+         # Non-linearity
+        self.relu = nn.ReLU()
+        # Linear function 2 : hidden layer to our output layer
+        self.fc2 = nn.Linear(hidden_dimension, output_dimension)  
+
+    def forward(self, x):
+        # Output of our first linear layer
+        out = self.fc1(x)
+        # Output of our non-linearity layer
+        out = self.relu(out)
+        # Out put of our second Linear function (readout)
+        out = self.fc2(out)
+        return out # returns our model
+
+input_dimension = 101 # we have 101 time stamps
+hidden_dimension = 64 # this can be whatever we want, but should keep it divisible by 2, so it typically is either 32, 64, 128, 256, etc. 
+output_dimension = 20 # 5 cracks, each one with 4
+
+model = FeedforwardNeuralNetModel(input_dimension, hidden_dimension, output_dimension)
+
+# We need to create our loss function
+criterion = nn.MSELoss()
+
+# Our core training process:
+learning_rate = 0.01
+
+optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+# Now we need to load our saved model in order to use it to plot the true values vs. the predicted ones our model creates
+path = ".\Feedforward_Neural_Network.pt"
+model = torch.load(path)
+model.eval()
+
+for i, (input, labels, sim_name) in enumerate(trainloader):
+    input = (input.float()).to(device)
+    labels = (labels).to(device)
+
+    prediction = model(input)
+    loss = criterion(prediction, labels)
+    optimizer.zero_grad() # zero the parameter gradients
+    loss.backward()
+    optimizer.step()
+    print(labels)
+    print(prediction)
+    real_prediction = prediction.detach().cpu().numpy()
+    real_labels = labels.detach().cpu().numpy() 
+    error = (abs(prediction-labels)/labels)
+    real_error = torch.mean(error) * 100
+    rounded_error = torch.round( real_error.clone().detach().requires_grad_(True))
+    crack_id = real_prediction[0] 
+    print(real_prediction)
+   
+   
+    plt.plot([crack_id[0],crack_id[2]], [crack_id[1],crack_id[3]], color = 'black', label = f"Average Error: {rounded_error}")
+    plt.plot([crack_id[4],crack_id[6]], [crack_id[5],crack_id[7]], color = 'black')
+    plt.plot([crack_id[8],crack_id[10]],[crack_id[9],crack_id[11]], color = 'black')
+    plt.plot([crack_id[12],crack_id[14]], [crack_id[13], crack_id[15]], color = 'black')
+    plt.plot([crack_id[16],crack_id[18]], [crack_id[17], crack_id[19]], color = 'black')
+    plt.legend(ncol=1, loc= 'best')
+    plt.xlim(0,1)
+    plt.ylim(0,1) 
+    plt.title('Predicted Crack Positions')   
+    plt.show() 
+
+# plot the labels in order to compare them to our predicted values
+    print(labels)
+    label_crack_id = real_labels[0]
+    plt.plot([label_crack_id[0],label_crack_id[2]], [label_crack_id[1],label_crack_id[3]], color = 'black')
+    plt.plot([label_crack_id[4],label_crack_id[6]], [label_crack_id[5],label_crack_id[7]], color = 'black')
+    plt.plot([label_crack_id[8],label_crack_id[10]],[label_crack_id[9],label_crack_id[11]], color = 'black')
+    plt.plot([label_crack_id[12],label_crack_id[14]], [label_crack_id[13], label_crack_id[15]], color = 'black')
+    plt.plot([label_crack_id[16],label_crack_id[18]], [label_crack_id[17], label_crack_id[19]], color = 'black')
+    plt.xlim(0,1)
+    plt.ylim(0,1) 
+    plt.title('Actual Crack Positions') 
+    plt.show()

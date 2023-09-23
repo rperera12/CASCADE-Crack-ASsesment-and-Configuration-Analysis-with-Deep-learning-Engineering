@@ -1,0 +1,154 @@
+# Conditional GAN
+
+# *Still doesn't work fully, but I got the error I have been working on for the last few weeks fixed*
+
+import numpy as np
+import torch
+import torchvision
+import os
+import scipy.io
+import matplotlib.pyplot as plt
+from torchvision import datasets, transforms
+from torch import nn
+import torch.optim as optim
+
+from DataLoader.DataLoader_1 import CustomCollate, DataLoader_X
+
+# Get the root directory for the dataset
+root_dir = os.getcwd() + '/train_dir/'
+
+    # Create a DataLoader instance using the root directory
+trainset = DataLoader_X(root_dir)
+
+    # Create our trainloader using the DataLoader instance and CustomCollate function
+trainloader = torch.utils.data.DataLoader(trainset, collate_fn=CustomCollate())
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Using device:", device)
+
+
+input_dimension = 101 # our input/condition is 101 time steps
+output_dimension = 20 # potential energies of the crack positions
+hidden_dimension = 128
+
+# Building our Discriminator
+class Discriminator(nn.Module):
+    def __init__(self):
+        super(Discriminator, self).__init__()
+        self.discriminator1 = nn.Linear((hidden_dimension*4)+input_dimension, hidden_dimension*2) # our input is our 101 potential energies-that is the condition we will give to our GAN
+        self.discriminator2 = nn.ReLU(0.2)
+        self.discriminator3 = nn.Linear(hidden_dimension*2, hidden_dimension) # hidden_dimension * 2 = 256 
+        self.discriminator4 = nn.ReLU(0.2)
+        self.discriminator5 = nn.Linear(hidden_dimension, output_dimension) # 20 represents our output, 5 cracks, each one with 4 coordinates (the same output as our feedforward neural network)
+        self.discriminator6 = nn.Sigmoid()
+
+    def forward(self, x):
+        x = x.view(x.size(0), -1).float()
+        output1 = self.discriminator1(x)
+        output2 = self.discriminator2(output1)
+        output3 = self.discriminator3(output2)
+        output4 = self.discriminator4(output3)
+        output5 = self.discriminator5(output4)
+        actual_output = self.discriminator6(output5)
+        print(actual_output.size())
+        #return actual_output
+discriminator = Discriminator().to(device)
+
+
+# Building our Generator
+class Generator(nn.Module):
+    def __init__(self):
+        super(Generator, self).__init__()
+        self.generator1 = nn.Linear(input_dimension + 100, hidden_dimension) # our input is our 101 potential energies-that is the condition we will give to our GAN
+        self.generator2 = nn.ReLU(0.2)
+        self.generator3 = nn.Linear(hidden_dimension, hidden_dimension*2 ) # hidden_dimension * 2 = 256 
+        self.generator4 = nn.ReLU(0.2)
+        self.generator5 = nn.Linear(hidden_dimension*2,(hidden_dimension*4)) # 20 represents our output, 5 cracks, each one with 4 coordinates (the same output as our feedforward neural network)
+        self.generator6 = nn.Sigmoid()
+
+    def forward(self,x,z):
+        x = x.view(x.size(0), -1).float()
+        output1 = self.generator1(x)
+        print(output1.size())
+        output2 = self.generator2(output1)
+        output3 = self.generator3(output2)
+        output4 = self.generator4(output3)
+        output5 = self.generator5(output4)
+        actual_output = self.generator6(output5)
+        print(actual_output.size())
+        
+generator = Generator().to(device)
+
+
+leanring_rate = 0.001
+gen_optimizer = torch.optim.Adam(generator.parameters(), leanring_rate)
+disc_optimizer = torch.optim.Adam(discriminator.parameters(), leanring_rate)
+criterion = nn.BCELoss()
+
+# Now we can train our discriminator
+def discriminator_training(disc_optimizer, real_training_data, fake_training_data, input): # real_training_data = (real_input, real_labels) and fake_training_data= (fake_input, fake_lab)
+    disc_optimizer.zero_grad()
+
+    # Now we can train our discriminator with our real data(real_training_data)
+    real_discriminator_prediction = discriminator(real_training_data, input)
+    real_discriminator_loss = criterion(real_discriminator_prediction, torch.ones(real_training_data.size(0), 1).to(device))
+
+    # Now we can train with fake data
+    fake_discriminator_prediction = discriminator(fake_training_data, input)
+    fake_discriminator_loss = criterion(fake_discriminator_prediction, torch.ones(fake_training_data.size(0), 1).to(device))
+
+    discriminator_loss = real_discriminator_loss + fake_discriminator_loss
+    discriminator_loss.backward()
+    disc_optimizer.step()
+
+    return discriminator_loss
+
+# Now we can train our generator
+def generator_training(gen_optimizer, fake_input, fake_labels):
+    z = torch.randn(batch_size, 100).to(device) # random noise
+    fake_input = generator(z, fake_labels) # this creates our fake images
+    gen_optimizer.zero_grad()
+    generator_prediction = discriminator(fake_input, fake_labels)
+    generator_loss = criterion(generator_prediction, torch.ones(fake_input.size(0), 1).to(device))
+    generator_loss.backward()
+    gen_optimizer.step()
+
+    return generator_loss
+
+
+# Now we can try and train our whole model:
+num_epochs = 10
+for epoch in range(num_epochs):
+    for i, (input, labels, sim_name) in enumerate(trainloader):
+        input = input.to(device)
+        labels = labels.to(device)
+        batch_size = input.size(0)
+        z = torch.randn(100, 201).to(device) # 201 is the condition we are using for our conditional GAN
+
+        # Training the Discriminator (doing similar training to my feedforward neural network, it's just in a new format for the generator and discriminator)
+        images_generated = generator(z, input) # this will create fake images
+        print(images_generated)
+
+        # so now we need to find the loss for the dicriminator creating real images and fake images
+        fake_dicriminator_loss = discriminator_training(disc_optimizer, input, labels, images_generated) 
+        real_discriminator_loss = discriminator_training(disc_optimizer, labels, labels, input)
+        total_discriminator_loss = fake_dicriminator_loss + real_discriminator_loss
+    
+        # Training the Generator (similar to how we trained the discriminator)
+
+        # computes the loss for the generator while training it
+        generated_images = generator(z, input)
+        print(generated_images.size())
+        generator_loss = generator_training(gen_optimizer, generated_images, input)
+
+        iteration =+ 1
+
+        if iteration % 10 == 0:
+            # Print the iterations, loss and accuracy         
+            print('Iterations: {}. Discriminator Loss: {}.'.format(iteration, total_discriminator_loss.item()))
+            print('Labels: {}'.format(labels))
+            #print('Prediction: {}'.format(discriminator_prediction))
+
+            print('Iterations: {}. Generator Loss: {}.'.format(iteration, generator_loss.item()))
+            print('Labels: {}'.format(labels))
+            #print('Prediction: {}'.format(generator_prediction))
